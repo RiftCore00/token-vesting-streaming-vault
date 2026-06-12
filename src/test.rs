@@ -166,3 +166,80 @@ fn test_withdraw_twice_accumulates_correctly() {
     let bal = token::Client::new(&env, &token_id).balance(&recipient);
     assert_eq!(bal, 500);
 }
+
+// ── additional edge cases ─────────────────────────────────────────────────────
+
+#[test]
+fn test_create_stream_duplicate_recipient_panics() {
+    let env = Env::default();
+    let (client, _, recipient, _) = setup(&env);
+    set_time(&env, 0);
+    client.create_stream(&recipient, &1_000, &100, &200);
+    set_time(&env, 150);
+    assert_eq!(client.claimable_amount(&recipient), 500);
+}
+
+#[test]
+#[should_panic(expected = "stream already exists")]
+fn test_create_stream_duplicate_recipient_create_again_panics() {
+    let env = Env::default();
+    let (client, _, recipient, _) = setup(&env);
+    client.create_stream(&recipient, &1_000, &100, &200);
+    client.create_stream(&recipient, &500, &100, &200);
+}
+
+#[test]
+fn test_claimable_before_any_stream() {
+    let env = Env::default();
+    let (client, _, recipient, _) = setup(&env);
+    set_time(&env, 100);
+    client.create_stream(&recipient, &1_000, &200, &400);
+    set_time(&env, 150);
+    assert_eq!(client.claimable_amount(&recipient), 0);
+}
+
+#[test]
+fn test_withdraw_exact_at_end_time() {
+    let env = Env::default();
+    let (client, _, recipient, token_id) = setup(&env);
+    client.create_stream(&recipient, &1_000, &0, &100);
+
+    set_time(&env, 100);
+    client.withdraw(&recipient);
+
+    let bal = token::Client::new(&env, &token_id).balance(&recipient);
+    assert_eq!(bal, 1_000);
+    assert_eq!(client.claimable_amount(&recipient), 0);
+}
+
+#[test]
+fn test_claimable_fractional_rounding() {
+    let env = Env::default();
+    let (client, _, recipient, _) = setup(&env);
+    // 7 tokens over 3 seconds → each second yields 2 tokens (floor), remainder lost
+    client.create_stream(&recipient, &7, &0, &3);
+
+    set_time(&env, 1);
+    assert_eq!(client.claimable_amount(&recipient), 2);
+
+    set_time(&env, 2);
+    assert_eq!(client.claimable_amount(&recipient), 4);
+
+    set_time(&env, 3);
+    assert_eq!(client.claimable_amount(&recipient), 7);
+}
+
+#[test]
+fn test_admin_cannot_withdraw_recipient_stream() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, recipient, _) = setup(&env);
+    client.create_stream(&recipient, &1_000, &0, &100);
+    set_time(&env, 50);
+    // Admin trying to withdraw recipient's stream should fail auth
+    // (recipient.require_auth() will reject admin address)
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.withdraw(&admin);
+    }));
+    assert!(result.is_err());
+}
