@@ -230,16 +230,38 @@ fn test_claimable_fractional_rounding() {
 }
 
 #[test]
+#[should_panic]
 fn test_admin_cannot_withdraw_recipient_stream() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, admin, recipient, _) = setup(&env);
     client.create_stream(&recipient, &1_000, &0, &100);
     set_time(&env, 50);
-    // Admin trying to withdraw recipient's stream should fail auth
-    // (recipient.require_auth() will reject admin address)
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        client.withdraw(&admin);
-    }));
-    assert!(result.is_err());
+    // Admin has no stream — withdraw panics on missing stream lookup
+    client.withdraw(&admin);
+}
+
+// ── exact boundary tests ──────────────────────────────────────────────────────
+
+/// Issue 39: stream at exact start and end time boundaries.
+#[test]
+fn test_stream_at_exact_start_boundary() {
+    let env = Env::default();
+    let (client, _, recipient, _) = setup(&env);
+    client.create_stream(&recipient, &1_000, &100, &200);
+    // At exactly start_time nothing is unlocked yet
+    set_time(&env, 100);
+    assert_eq!(client.claimable_amount(&recipient), 0);
+}
+
+#[test]
+fn test_stream_at_exact_end_boundary() {
+    let env = Env::default();
+    let (client, _, recipient, token_id) = setup(&env);
+    client.create_stream(&recipient, &1_000, &100, &200);
+    // At exactly end_time everything is unlocked
+    set_time(&env, 200);
+    assert_eq!(client.claimable_amount(&recipient), 1_000);
+    client.withdraw(&recipient);
+    assert_eq!(token::Client::new(&env, &token_id).balance(&recipient), 1_000);
 }
