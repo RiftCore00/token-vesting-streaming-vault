@@ -230,16 +230,32 @@ fn test_claimable_fractional_rounding() {
 }
 
 #[test]
+#[should_panic]
 fn test_admin_cannot_withdraw_recipient_stream() {
     let env = Env::default();
     env.mock_all_auths();
     let (client, admin, recipient, _) = setup(&env);
     client.create_stream(&recipient, &1_000, &0, &100);
     set_time(&env, 50);
-    // Admin trying to withdraw recipient's stream should fail auth
-    // (recipient.require_auth() will reject admin address)
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        client.withdraw(&admin);
-    }));
-    assert!(result.is_err());
+    // Admin has no stream — withdraw panics on missing stream lookup
+    client.withdraw(&admin);
+}
+
+// ── large token amount tests ──────────────────────────────────────────────────
+
+/// Issue 40: verify contract handles very large i128 token amounts without overflow.
+#[test]
+fn test_very_large_token_amount() {
+    let env = Env::default();
+    let (client, admin, recipient, token_id) = setup(&env);
+
+    // Use a large even amount so 50% division is exact
+    let large_amount: i128 = 1_000_000_000_000_000_000_i128; // 10^18
+    token::StellarAssetClient::new(&env, &token_id).mint(&admin, &large_amount);
+
+    client.create_stream(&recipient, &large_amount, &0, &1_000_000);
+
+    set_time(&env, 500_000); // 50%
+    let claimable = client.claimable_amount(&recipient);
+    assert_eq!(claimable, large_amount / 2);
 }
