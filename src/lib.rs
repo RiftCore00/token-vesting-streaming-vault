@@ -4,34 +4,37 @@ mod types;
 #[cfg(test)]
 mod test;
 
-use soroban_sdk::{contract, contractimpl, token, Address, Env};
-use types::StreamState;
+use soroban_sdk::{contract, contractimpl, contracttype, token, Address, Env};
+use types::{StreamKey, StreamState};
 
-// Storage keys
-const ADMIN: &str = "admin";
-const TOKEN: &str = "token";
+// ── Storage keys ──────────────────────────────────────────────────────────────
 
-fn stream_key(recipient: &Address) -> Address {
-    recipient.clone()
+/// Typed keys for contract instance storage.
+#[contracttype]
+enum InstanceKey {
+    Admin,
+    Token,
 }
+
+// ── Contract ──────────────────────────────────────────────────────────────────
 
 #[contract]
 pub struct VestingVault;
 
 #[contractimpl]
 impl VestingVault {
-    /// Issue #1 — Initialize contract with admin and token addresses.
+    /// Initialize the contract with admin and SAC token addresses. Can only be called once.
     pub fn init(env: Env, admin: Address, token: Address) {
         let storage = env.storage().instance();
-        // Prevent re-initialization
-        if storage.has(&ADMIN) {
+        if storage.has(&InstanceKey::Admin) {
             panic!("already initialized");
         }
-        storage.set(&ADMIN, &admin);
-        storage.set(&TOKEN, &token);
+        storage.set(&InstanceKey::Admin, &admin);
+        storage.set(&InstanceKey::Token, &token);
     }
 
-    /// Issue #1 — Create a new linear vesting stream for a recipient.
+    /// Create a new linear vesting stream for `recipient`. Admin auth required.
+    /// Transfers `total_amount` tokens from admin into the contract.
     pub fn create_stream(
         env: Env,
         recipient: Address,
@@ -39,14 +42,13 @@ impl VestingVault {
         start_time: u64,
         end_time: u64,
     ) {
-        // Only admin can create streams
-        let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        let admin: Address = env.storage().instance().get(&InstanceKey::Admin).unwrap();
         admin.require_auth();
 
         assert!(total_amount > 0, "amount must be positive");
         assert!(end_time > start_time, "end_time must be after start_time");
 
-        let key = stream_key(&recipient);
+        let key = StreamKey::Stream(recipient.clone());
         assert!(
             !env.storage().persistent().has(&key),
             "stream already exists"
@@ -61,24 +63,23 @@ impl VestingVault {
         };
         env.storage().persistent().set(&key, &stream);
 
-        // Transfer tokens from admin into the contract
-        let token_addr: Address = env.storage().instance().get(&TOKEN).unwrap();
+        let token_addr: Address = env.storage().instance().get(&InstanceKey::Token).unwrap();
         let token_client = token::Client::new(&env, &token_addr);
         token_client.transfer(&admin, env.current_contract_address(), &total_amount);
     }
 
-    /// Issue #2 — Return the currently unlocked (claimable) token amount for a recipient.
+    /// Return the currently unlocked (claimable) token amount for `recipient`.
     pub fn claimable_amount(env: Env, recipient: Address) -> i128 {
-        let key = stream_key(&recipient);
+        let key = StreamKey::Stream(recipient.clone());
         let stream: StreamState = env.storage().persistent().get(&key).unwrap();
         Self::unlocked(&env, &stream) - stream.claimed_amount
     }
 
-    /// Issue #3 — Withdraw all unlocked tokens to the recipient.
+    /// Withdraw all currently unlocked tokens to `recipient`. Recipient auth required.
     pub fn withdraw(env: Env, recipient: Address) {
         recipient.require_auth();
 
-        let key = stream_key(&recipient);
+        let key = StreamKey::Stream(recipient.clone());
         let mut stream: StreamState = env.storage().persistent().get(&key).unwrap();
 
         let claimable = Self::unlocked(&env, &stream) - stream.claimed_amount;
@@ -87,14 +88,33 @@ impl VestingVault {
         stream.claimed_amount += claimable;
         env.storage().persistent().set(&key, &stream);
 
-        let token_addr: Address = env.storage().instance().get(&TOKEN).unwrap();
+        let token_addr: Address = env.storage().instance().get(&InstanceKey::Token).unwrap();
         let token_client = token::Client::new(&env, &token_addr);
         token_client.transfer(&env.current_contract_address(), &recipient, &claimable);
     }
 
-    // ── Internal helper ──────────────────────────────────────────────────────
+    /// Cancel an active stream, returning all unclaimed tokens to admin. Admin auth required.
+    pub fn cancel_stream(env: Env, recipient: Address) {
+        let admin: Address = env.storage().instance().get(&InstanceKey::Admin).unwrap();
+        admin.require_auth();
 
-    /// Linear unlock: proportional to elapsed time, capped at total_amount.
+        let key = StreamKey::Stream(recipient.clone());
+        let stream: StreamState = env.storage().persistent().get(&key).unwrap();
+
+        let unclaimed = stream.total_amount - stream.claimed_amount;
+        env.storage().persistent().remove(&key);
+
+        if unclaimed > 0 {
+            let token_addr: Address = env.storage().instance().get(&InstanceKey::Token).unwrap();
+            let token_client = token::Client::new(&env, &token_addr);
+            token_client.transfer(&env.current_contract_address(), &admin, &unclaimed);
+        }
+    }
+
+    // ── Internal helpers ──────────────────────────────────────────────────────
+
+    /// Compute linearly unlocked tokens for `stream` at the current ledger time.
+    /// Returns a value in `[0, stream.total_amount]`.
     fn unlocked(env: &Env, stream: &StreamState) -> i128 {
         let now = env.ledger().timestamp();
         if now <= stream.start_time {
