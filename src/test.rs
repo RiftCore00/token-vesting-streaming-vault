@@ -1,3 +1,11 @@
+//! Unit tests for the Token Vesting & Streaming Vault contract.
+//!
+//! Tests are grouped by the contract function they exercise:
+//! - **init** — one-time initialization and double-init guard
+//! - **create_stream** — stream creation, validation, and duplicate-recipient guard
+//! - **claimable_amount** — vesting math at various points in the timeline
+//! - **withdraw** — token transfers, incremental withdrawals, and auth checks
+//! - **cancel_stream** — admin cancellation and stream removal
 #![cfg(test)]
 
 use soroban_sdk::{

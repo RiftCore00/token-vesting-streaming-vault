@@ -1,24 +1,21 @@
-## Description
+## Summary
 
-Brief description of what this PR changes and why.
-
-## Related Issue
-
-Closes #
+<!-- Describe what this PR does and why. -->
 
 ## Type of Change
 
 - [ ] Bug fix
 - [ ] New feature
-- [ ] Documentation
-- [ ] CI / Infrastructure
 - [ ] Refactor
+- [ ] Documentation
+- [ ] CI/Infrastructure
+
+## Testing
+
+<!-- Describe how you tested this change. -->
 
 ## Checklist
 
-- [ ] `cargo test` passes
-- [ ] `cargo fmt` has been run
-- [ ] `cargo clippy` is clean (no warnings)
-- [ ] Documentation updated (if applicable)
-- [ ] Tests added for new behaviour
-- [ ] Test snapshots updated (if contract storage changed)
+- [ ] Tests pass (`cargo test`)
+- [ ] Code builds (`cargo build --target wasm32v1-none --release`)
+- [ ] No unrelated changes included
