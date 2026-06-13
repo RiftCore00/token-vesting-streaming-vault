@@ -10,6 +10,8 @@ Thank you for your interest in contributing! This document outlines the developm
 │   ├── types.rs         # Data structures (StreamState)
 │   └── test.rs          # Unit test suite
 ├── test_snapshots/      # Soroban test snapshots (ledger state assertions)
+├── docs/                # Additional documentation
+├── scripts/             # Soroban CLI helper scripts
 ├── Cargo.toml           # Rust project configuration
 └── .github/workflows/   # CI pipeline
 ```
@@ -21,7 +23,16 @@ Thank you for your interest in contributing! This document outlines the developm
   ```bash
   rustup target add wasm32v1-none
   ```
-- [Soroban CLI](https://soroban.stellar.org/docs/getting-started/setup) (for deployment)
+- [Soroban CLI](https://soroban.stellar.org/docs/getting-started/setup) (for deployment and scripting)
+
+## Getting Started with Soroban
+
+This project is a [Soroban](https://soroban.stellar.org) smart contract targeting the Stellar network. A few things to know:
+
+- The contract compiles to **WebAssembly** using the `wasm32v1-none` target. This target has no `std` library, so the crate uses `#![no_std]`.
+- Tests run using the `soroban-sdk` test environment (`Env::default()`), which simulates the ledger in-process — no network needed.
+- **Test snapshots** in `test_snapshots/` capture expected ledger state after each test. If you add or change contract behaviour, run `cargo test` to regenerate them, then commit the updated snapshots.
+- The `soroban-sdk` version is pinned in `Cargo.toml`. Upgrades require careful testing — see `docs/SDK_UPGRADE_CHECKLIST.md`.
 
 ## Development Setup
 
@@ -74,7 +85,7 @@ Every new feature must include tests. The test suite covers:
 - **claimable_amount**: before start, at midpoint, after end, after partial withdrawal
 - **withdraw**: partial, full, empty (panic), multiple sequential withdrawals
 
-To add test snapshots for new scenarios:
+To add a new test:
 
 ```rust
 #[test]
@@ -91,6 +102,28 @@ Run tests with:
 cargo test
 ```
 
+### Test Snapshots
+
+Soroban captures ledger snapshots during tests. These live in `test_snapshots/`. If your change alters contract storage behaviour, delete the relevant snapshot files and re-run `cargo test` to regenerate them. Always commit updated snapshots alongside your code changes.
+
+## Commit Message Format
+
+Use the conventional commits style:
+
+```
+<type>: <short summary>
+
+[optional body]
+```
+
+Types: `feat`, `fix`, `docs`, `test`, `refactor`, `ci`, `chore`
+
+Examples:
+- `feat: add cancel_stream function`
+- `fix: prevent overflow in unlocked() for large amounts`
+- `docs: add deployment guide for mainnet`
+- `test: add invariant test for claimed <= total`
+
 ## Security Considerations
 
 - **Checks-effects-interactions**: State is updated before external token transfers.
@@ -105,6 +138,14 @@ cargo test
 3. Run `cargo fmt` and `cargo clippy`.
 4. Open a pull request with a clear description of the change and link to any related issues.
 5. Ensure CI passes (test + WASM build).
+6. At least one maintainer review is required before merging.
+
+## Code Review
+
+- Reviews focus on correctness, security, test coverage, and code clarity.
+- Reviewers may request changes — please address all comments before merging.
+- Trivial doc/infra changes may be merged with a single approval.
+- Any change to `src/lib.rs` or `src/types.rs` requires a security-focused review.
 
 ## Good First Issues
 
