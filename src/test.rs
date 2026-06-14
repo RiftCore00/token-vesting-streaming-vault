@@ -279,3 +279,69 @@ fn test_multiple_sequential_streams_different_recipients() {
     assert_eq!(token::Client::new(&env, &token_id).balance(&recipient1), 500);
     assert_eq!(token::Client::new(&env, &token_id).balance(&recipient2), 250);
 }
+
+// ── cancel_stream ──────────────────────────────────────────────────────────────
+
+#[test]
+fn test_cancel_stream_ok() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, recipient, token_id) = setup(&env);
+    client.create_stream(&recipient, &1_000, &0, &100);
+    set_time(&env, 50);
+    // Cancel the stream before full vesting
+    client.cancel_stream(&recipient);
+    // Stream should be removed
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.claimable_amount(&recipient);
+    }));
+    assert!(result.is_err());
+    // Admin should receive back the unclaimed tokens
+    let bal = token::Client::new(&env, &token_id).balance(&admin);
+    assert_eq!(bal, 1_000_000);
+}
+
+#[test]
+fn test_cancel_stream_partial_withdraw() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, recipient, token_id) = setup(&env);
+    client.create_stream(&recipient, &1_000, &0, &100);
+    set_time(&env, 50);
+    client.withdraw(&recipient); // withdraw 500
+    // Cancel remaining 500
+    client.cancel_stream(&recipient);
+    // Admin gets back the unclaimed 500 (1_000 - 500 withdrawn)
+    let admin_bal = token::Client::new(&env, &token_id).balance(&admin);
+    assert_eq!(admin_bal, 999_500);
+    let recipient_bal = token::Client::new(&env, &token_id).balance(&recipient);
+    assert_eq!(recipient_bal, 500);
+}
+
+#[test]
+fn test_cancel_stream_by_non_admin() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, _, recipient, _) = setup(&env);
+    client.create_stream(&recipient, &1_000, &0, &100);
+    env.set_auths(&[]);
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        client.cancel_stream(&recipient);
+    }));
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_cancel_stream_after_full_withdraw() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let (client, admin, recipient, token_id) = setup(&env);
+    client.create_stream(&recipient, &1_000, &0, &100);
+    set_time(&env, 100);
+    client.withdraw(&recipient); // withdraw full 1_000
+    // Cancel after full withdrawal — no unclaimed tokens remain
+    client.cancel_stream(&recipient);
+    // Admin balance should be unchanged (tokens already went to recipient)
+    let admin_bal = token::Client::new(&env, &token_id).balance(&admin);
+    assert_eq!(admin_bal, 1_000_000 - 1_000);
+}
