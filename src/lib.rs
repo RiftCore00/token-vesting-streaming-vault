@@ -1,5 +1,11 @@
 #![no_std]
 
+//! A Soroban contract for linear token vesting and streaming.
+//!
+//! The admin creates vesting streams that linearly unlock tokens over a
+//! specified time window. Recipients can withdraw their unlocked tokens
+//! at any point during or after the vesting period.
+
 mod types;
 #[cfg(test)]
 mod test;
@@ -15,12 +21,18 @@ fn stream_key(recipient: &Address) -> Address {
     recipient.clone()
 }
 
+/// The Vesting & Streaming Vault contract.
+///
+/// Manages linear vesting streams identified by recipient address.
 #[contract]
 pub struct VestingVault;
 
 #[contractimpl]
 impl VestingVault {
-    /// Issue #1 — Initialize contract with admin and token addresses.
+    /// Initialize the contract with an admin address and token address.
+///
+/// # Panics
+/// Panics if the contract has already been initialized.
     pub fn init(env: Env, admin: Address, token: Address) {
         let storage = env.storage().instance();
         // Prevent re-initialization
@@ -31,7 +43,15 @@ impl VestingVault {
         storage.set(&TOKEN, &token);
     }
 
-    /// Issue #1 — Create a new linear vesting stream for a recipient.
+    /// Create a new linear vesting stream for a recipient.
+    ///
+    /// Transfers `total_amount` tokens from the admin into the contract.
+    ///
+    /// # Panics
+    /// - If the caller is not the admin.
+    /// - If `total_amount` is not positive.
+    /// - If `end_time` is not after `start_time`.
+    /// - If a stream for the recipient already exists.
     pub fn create_stream(
         env: Env,
         recipient: Address,
@@ -67,14 +87,21 @@ impl VestingVault {
         token_client.transfer(&admin, env.current_contract_address(), &total_amount);
     }
 
-    /// Issue #2 — Return the currently unlocked (claimable) token amount for a recipient.
+    /// Return the amount of tokens currently unlocked and not yet withdrawn for a recipient.
+    ///
+    /// # Panics
+    /// Panics if no stream exists for the recipient.
     pub fn claimable_amount(env: Env, recipient: Address) -> i128 {
         let key = stream_key(&recipient);
         let stream: StreamState = env.storage().persistent().get(&key).unwrap();
         Self::unlocked(&env, &stream) - stream.claimed_amount
     }
 
-    /// Issue #3 — Withdraw all unlocked tokens to the recipient.
+    /// Withdraw all currently unlocked tokens to the recipient.
+    ///
+    /// # Panics
+    /// - If the caller is not the recipient.
+    /// - If there are no unlocked tokens to withdraw.
     pub fn withdraw(env: Env, recipient: Address) {
         recipient.require_auth();
 
@@ -94,7 +121,10 @@ impl VestingVault {
 
     // ── Internal helper ──────────────────────────────────────────────────────
 
-    /// Linear unlock: proportional to elapsed time, capped at total_amount.
+    /// Compute the linearly-unlocked amount for a stream at the current ledger timestamp.
+///
+/// Returns `0` before `start_time`, `total_amount` after `end_time`, and a
+/// proportional fraction (integer division, floored) in between.
     fn unlocked(env: &Env, stream: &StreamState) -> i128 {
         let now = env.ledger().timestamp();
         if now <= stream.start_time {
