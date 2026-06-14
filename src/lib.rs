@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(test), no_std)]
 
 mod types;
 #[cfg(test)]
@@ -92,7 +92,29 @@ impl VestingVault {
         token_client.transfer(&env.current_contract_address(), &recipient, &claimable);
     }
 
-    // ── Internal helper ──────────────────────────────────────────────────────
+    /// Cancel an active stream and return unclaimed tokens to the admin.
+    ///
+    /// Only the admin may call this. The stream is removed from storage and
+    /// any tokens that have not been withdrawn are transferred back to the
+    /// admin address.
+    pub fn cancel_stream(env: Env, recipient: Address) {
+        let admin: Address = env.storage().instance().get(&ADMIN).unwrap();
+        admin.require_auth();
+
+        let key = stream_key(&recipient);
+        let stream: StreamState = env.storage().persistent().get(&key).unwrap();
+
+        let unclaimed = stream.total_amount - stream.claimed_amount;
+        env.storage().persistent().remove(&key);
+
+        if unclaimed > 0 {
+            let token_addr: Address = env.storage().instance().get(&TOKEN).unwrap();
+            let token_client = token::Client::new(&env, &token_addr);
+            token_client.transfer(&env.current_contract_address(), &admin, &unclaimed);
+        }
+    }
+
+    // ── Internal helpers ─────────────────────────────────────────────────────
 
     /// Linear unlock: proportional to elapsed time, capped at total_amount.
     fn unlocked(env: &Env, stream: &StreamState) -> i128 {
