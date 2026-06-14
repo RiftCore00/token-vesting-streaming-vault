@@ -251,3 +251,57 @@ fn test_admin_cannot_withdraw_recipient_stream() {
     }));
     assert!(result.is_err());
 }
+
+// ── types edge cases ───────────────────────────────────────────────────────────
+
+#[test]
+fn test_stream_very_large_amount() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let admin = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let token_client = token::StellarAssetClient::new(&env, &token_id);
+    token_client.mint(&admin, &i128::MAX);
+    let contract_id = env.register(VestingVault, ());
+    let client = VestingVaultClient::new(&env, &contract_id);
+    client.init(&admin, &token_id);
+
+    set_time(&env, 0);
+    client.create_stream(&recipient, &i128::MAX, &0, &1);
+    // At t=0 (before any time passes), claimable is 0
+    assert_eq!(client.claimable_amount(&recipient), 0);
+    // At t=1 (end_time), full amount is claimable
+    set_time(&env, 1);
+    assert_eq!(client.claimable_amount(&recipient), i128::MAX);
+}
+
+#[test]
+#[should_panic(expected = "stream already exists")]
+fn test_cannot_create_duplicate_after_full_withdraw() {
+    let env = Env::default();
+    let (client, _, recipient, _) = setup(&env);
+    client.create_stream(&recipient, &1_000, &0, &100);
+    set_time(&env, 100);
+    client.withdraw(&recipient);
+    // Stream key persists after full withdrawal; a new stream for the same
+    // recipient is rejected.
+    client.create_stream(&recipient, &500, &0, &50);
+}
+
+#[test]
+fn test_claimable_rounding_at_one_third() {
+    let env = Env::default();
+    let (client, _, recipient, _) = setup(&env);
+    // 10 tokens over 3 seconds, at t=1 → 10 * 1 / 3 = 3 (integer division floors)
+    client.create_stream(&recipient, &10, &0, &3);
+    set_time(&env, 1);
+    assert_eq!(client.claimable_amount(&recipient), 3);
+    set_time(&env, 2);
+    assert_eq!(client.claimable_amount(&recipient), 6);
+    set_time(&env, 3);
+    assert_eq!(client.claimable_amount(&recipient), 10);
+}
