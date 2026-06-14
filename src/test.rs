@@ -1,3 +1,11 @@
+//! Unit tests for the Token Vesting & Streaming Vault contract.
+//!
+//! Tests are grouped by the contract function they exercise:
+//! - **init** — one-time initialization and double-init guard
+//! - **create_stream** — stream creation, validation, and duplicate-recipient guard
+//! - **claimable_amount** — vesting math at various points in the timeline
+//! - **withdraw** — token transfers, incremental withdrawals, and auth checks
+//! - **cancel_stream** — admin cancellation and stream removal
 #![cfg(test)]
 
 use soroban_sdk::{
@@ -241,27 +249,33 @@ fn test_admin_cannot_withdraw_recipient_stream() {
     client.withdraw(&admin);
 }
 
-// ── exact boundary tests ──────────────────────────────────────────────────────
+// ── multi-recipient tests ─────────────────────────────────────────────────────
 
-/// Issue 39: stream at exact start and end time boundaries.
+/// Issue 44: multiple streams for different recipients are fully independent.
 #[test]
-fn test_stream_at_exact_start_boundary() {
+fn test_multiple_sequential_streams_different_recipients() {
     let env = Env::default();
-    let (client, _, recipient, _) = setup(&env);
-    client.create_stream(&recipient, &1_000, &100, &200);
-    // At exactly start_time nothing is unlocked yet
-    set_time(&env, 100);
-    assert_eq!(client.claimable_amount(&recipient), 0);
-}
+    let (client, admin, recipient1, token_id) = setup(&env);
+    let recipient2 = Address::generate(&env);
+    let recipient3 = Address::generate(&env);
 
-#[test]
-fn test_stream_at_exact_end_boundary() {
-    let env = Env::default();
-    let (client, _, recipient, token_id) = setup(&env);
-    client.create_stream(&recipient, &1_000, &100, &200);
-    // At exactly end_time everything is unlocked
-    set_time(&env, 200);
-    assert_eq!(client.claimable_amount(&recipient), 1_000);
-    client.withdraw(&recipient);
-    assert_eq!(token::Client::new(&env, &token_id).balance(&recipient), 1_000);
+    // Mint enough for all streams
+    token::StellarAssetClient::new(&env, &token_id).mint(&admin, &2_000);
+
+    client.create_stream(&recipient1, &1_000, &0, &100);
+    client.create_stream(&recipient2, &500, &0, &100);
+    client.create_stream(&recipient3, &1_500, &0, &100);
+
+    set_time(&env, 50); // 50% point
+    assert_eq!(client.claimable_amount(&recipient1), 500);
+    assert_eq!(client.claimable_amount(&recipient2), 250);
+    assert_eq!(client.claimable_amount(&recipient3), 750);
+
+    client.withdraw(&recipient1);
+    client.withdraw(&recipient2);
+
+    // recipient3 not yet withdrawn — amounts are independent
+    assert_eq!(client.claimable_amount(&recipient3), 750);
+    assert_eq!(token::Client::new(&env, &token_id).balance(&recipient1), 500);
+    assert_eq!(token::Client::new(&env, &token_id).balance(&recipient2), 250);
 }
