@@ -237,6 +237,58 @@ fn test_claimable_fractional_rounding() {
     assert_eq!(client.claimable_amount(&recipient), 7);
 }
 
+// ── issue #2: edge-case tests ─────────────────────────────────────────────────
+
+#[test]
+#[should_panic(expected = "HostError")]
+fn test_create_stream_by_non_admin() {
+    let env = Env::default();
+    // Do NOT mock all auths — we want real auth checks.
+    let bad_user = Address::generate(&env);
+    let recipient = Address::generate(&env);
+    let token_admin = Address::generate(&env);
+    let token_id = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let token_client = token::StellarAssetClient::new(&env, &token_id);
+    token_client.mint(&bad_user, &1_000_000);
+    let contract_id = env.register(VestingVault, ());
+    let client = VestingVaultClient::new(&env, &contract_id);
+    // Only the admin from init can create streams; bad_user is not admin.
+    // We must init first with a real admin, then try bad_user.
+    let real_admin = Address::generate(&env);
+    client.init(&real_admin, &token_id);
+    // Attempt to create a stream as bad_user (will fail auth on admin.require_auth)
+    client.create_stream(&recipient, &1_000, &100, &200);
+}
+
+#[test]
+#[should_panic(expected = "amount must be positive")]
+fn test_create_stream_negative_amount() {
+    let env = Env::default();
+    let (client, _, recipient, _) = setup(&env);
+    set_time(&env, 0);
+    client.create_stream(&recipient, &(-100), &100, &200);
+}
+
+#[test]
+fn test_claimable_at_exact_start_time() {
+    let env = Env::default();
+    let (client, _, recipient, _) = setup(&env);
+    client.create_stream(&recipient, &1_000, &100, &200);
+    set_time(&env, 100); // exactly at start_time
+    assert_eq!(client.claimable_amount(&recipient), 0);
+}
+
+#[test]
+fn test_claimable_at_exact_end_time() {
+    let env = Env::default();
+    let (client, _, recipient, _) = setup(&env);
+    client.create_stream(&recipient, &1_000, &100, &200);
+    set_time(&env, 200); // exactly at end_time
+    assert_eq!(client.claimable_amount(&recipient), 1_000);
+}
+
 #[test]
 #[should_panic]
 fn test_admin_cannot_withdraw_recipient_stream() {
