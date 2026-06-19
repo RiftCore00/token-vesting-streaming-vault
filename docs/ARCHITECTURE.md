@@ -65,6 +65,13 @@ Stored in **persistent** storage keyed by `recipient: Address`. Each recipient c
 
 An external [Stellar Asset Contract](https://developers.stellar.org/docs/smart-contracts/tokens) that the vault calls via `token::Client`. The vault holds the deposited tokens on behalf of recipients.
 
+### GrantFox Milestone Payouts
+
+For GrantFox-specific payout operations, see
+[GRANTFOX_INTEGRATION.md](GRANTFOX_INTEGRATION.md). That guide maps approved
+milestones to `create_stream`, `claimable_amount`, and `withdraw` calls without
+changing the base contract interface.
+
 ## Security Properties
 
 - **No reentrancy risk** — state is written before the external `token.transfer` call.

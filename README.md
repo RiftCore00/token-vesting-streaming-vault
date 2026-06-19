@@ -121,6 +121,9 @@ soroban contract invoke \
   --token <sac_token_address>
 ```
 
+For GrantFox milestone payout operations, see
+[docs/GRANTFOX_INTEGRATION.md](docs/GRANTFOX_INTEGRATION.md).
+
 ## CI/CD
 
 The project includes a GitHub Actions workflow (`.github/workflows/ci.yml`) that runs on every push and pull request:
