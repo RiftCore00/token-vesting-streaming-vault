@@ -78,6 +78,9 @@ Division is integer truncation, which is safe because it always rounds in favor 
   ```
 - [Soroban CLI](https://soroban.stellar.org/docs/getting-started/setup) (for deployment)
 
+If setup or build commands fail, see
+[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) for common fixes.
+
 ## Build
 
 ```bash
@@ -85,6 +88,9 @@ cargo build --target wasm32v1-none --release
 ```
 
 The compiled WASM contract will be at `target/wasm32v1-none/release/token_vesting_streaming_vault.wasm`.
+
+For missing target, linker, Soroban CLI, or CI build failures, see
+[`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md).
 
 ## Test
 
