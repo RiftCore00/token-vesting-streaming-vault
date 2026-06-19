@@ -78,6 +78,9 @@ Division is integer truncation, which is safe because it always rounds in favor 
   ```
 - [Soroban CLI](https://soroban.stellar.org/docs/getting-started/setup) (for deployment)
 
+When changing the Soroban SDK version, follow
+[`docs/SDK_UPGRADE_CHECKLIST.md`](docs/SDK_UPGRADE_CHECKLIST.md).
+
 ## Build
 
 ```bash
@@ -85,6 +88,10 @@ cargo build --target wasm32v1-none --release
 ```
 
 The compiled WASM contract will be at `target/wasm32v1-none/release/token_vesting_streaming_vault.wasm`.
+
+SDK upgrades can change generated WASM and test snapshots. Review
+[`docs/SDK_UPGRADE_CHECKLIST.md`](docs/SDK_UPGRADE_CHECKLIST.md) before bumping
+`soroban-sdk`.
 
 ## Test
 
