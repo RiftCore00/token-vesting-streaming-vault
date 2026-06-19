@@ -14,6 +14,8 @@ This guide walks through deploying the Token Vesting & Streaming Vault contract 
   ```
 - A **funded mainnet account** (admin). You need XLM to pay transaction fees and the contract's minimum balance.
 - The **SAC token address** you want to use for streams (must be a Stellar Asset Contract).
+- Confirm the pinned `soroban-sdk` line matches the target network protocol.
+  See [SOROBAN_COMPATIBILITY.md](SOROBAN_COMPATIBILITY.md).
 
 ## Safety Checklist Before Deploying to Mainnet
 
